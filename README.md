@@ -6,7 +6,7 @@ Pytorch implementation
 | Model type  | Clean audio val loss | Noised audio val loss |
 | ----------- | -------------------- | --------------------- |
 | Audio       | 12.88                |                       |
-| AudioVisual |                      |                       |
+| AudioVisual | 13.85                |                       |
 
 
 ***
@@ -24,8 +24,8 @@ Pytorch implementation
 
 ### AudioVisual model
 * #### Clean audio
-<!-- [tensorboard log online](https://tensorboard.dev/experiment/
-![audio_clean](src/log/audio_only_model/loss.png) -->
+[tensorboard log online](https://tensorboard.dev/experiment/Buna7CXiRqyWkGo9Z1exrQ)
+![audio_clean](src/log/audio_visual_model/clean_loss.png)
 
 * #### Noised audio
 <!-- [tensorboard log online](https://tensorboard.dev/experiment/
