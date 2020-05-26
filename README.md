@@ -1,5 +1,27 @@
 # TIME-DOMAIN-AUDIO-VISUAL-SPEECH-SEPARATION
 Pytorch implementation
 
+***
 
-Only audio model loss: 1.948
+| Model type  | Clean audio val loss | Noised audio val loss |
+| ----------- | -------------------- | --------------------- |
+| Audio       | 12.88                |                       |
+| AudioVisual |                      |                       |
+
+
+***
+
+### Audio-only model
+* #### Clean audio
+![audio_clean](src/log/audio_only_model/clean_loss.png)
+* #### Noised audio
+<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+
+***
+
+### AudioVisual model
+* #### Clean audio
+<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+* #### Noised audio
+<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+
