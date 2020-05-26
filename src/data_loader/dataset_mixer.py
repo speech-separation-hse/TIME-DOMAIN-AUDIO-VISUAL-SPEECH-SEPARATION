@@ -88,7 +88,7 @@ class DatasetMixer:
             second_video_features_path = self.path_to_features / f'{second_speaker_path.stem}_{second_speaker_video_path.stem}.npy'
             second_video_features = torch.load(second_video_features_path, map_location='cpu').squeeze(1)
 
-            min_frames = min(first_video_features.shape[0], second_video_features.shape[0])
+            min_frames = min(first_video_features.shape[0], second_video_features.shape[0], 50)
             first_video_offset = int(first_audio_offset // 1000)*25
             first_video_features = first_video_features[first_video_offset:first_video_offset + min_frames]
             second_video_offset = int(second_audio_offset // 1000)*25

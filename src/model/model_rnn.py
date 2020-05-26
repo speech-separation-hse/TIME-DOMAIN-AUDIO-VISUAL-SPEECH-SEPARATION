@@ -1,14 +1,14 @@
 import sys
-sys.path.append('../')
+#sys.path.append('../')
 
 import torch.nn.functional as F
 from torch import nn
 import torch
-from utils.util import check_parameters
+#from utils.util import check_parameters
 
 import warnings
 
-warnings.filterwarnings('ignore')
+#warnings.filterwarnings('ignore')
 
 class GlobalLayerNorm(nn.Module):
     '''
@@ -99,15 +99,15 @@ def select_norm(norm, dim, shape):
     else:
         return nn.BatchNorm1d(dim)
 
-class Encoder(nn.Module):
+class AudioEncoder(nn.Module):
     '''
-       Conv-Tasnet Encoder part
+       Conv-Tasnet AudioEncoder part
        kernel_size: the length of filters
        out_channels: the number of filters
     '''
 
     def __init__(self, kernel_size=2, out_channels=64):
-        super(Encoder, self).__init__()
+        super(AudioEncoder, self).__init__()
         self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
                                 kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
 
@@ -124,6 +124,38 @@ class Encoder(nn.Module):
         # B x 1 x T -> B x C x T_out
         x = self.conv1d(x)
         x = F.relu(x)
+        return x
+
+
+class VideoEncoder(nn.Module):
+    '''
+       Conv-Tasnet AudioEncoder part
+       kernel_size: the length of filters
+       out_channels: the number of filters
+    '''
+
+    def __init__(self, kernel_size=2, out_channels=256, upsample_size=16000):
+        super(VideoEncoder, self).__init__()
+        self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
+                                kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
+        self.upsample = nn.Upsample(size=upsample_size)
+        self.prelu = nn.PReLU()
+
+    def forward(self, x):
+        """
+          Input:
+              x: [B, T], B is batch size, T is times
+          Returns:
+              x: [B, C, T_out]
+              T_out is the number of time steps
+        """
+        # B x FPS x VideoFeatures -> B x 1 x FPS * VideoFeatures
+        x = x.flatten(start_dim=1).unsqueeze(1)
+        # B x 1 x FPS * VideoFeatures -> B x C x T_out
+        x = self.conv1d(x)
+        x = self.prelu(x)
+        # B x C x T_out -> B x C x upsample_size
+        x = self.upsample(x)
         return x
 
 
@@ -199,7 +231,7 @@ class Dual_RNN_Block(nn.Module):
         # [BS, K, H]
         # intra_rnn= nn.utils.rnn.pack_padded_sequence(
         #     intra_rnn, input_lengths, batch_first=True, enforce_sorted=False)
-
+        self.intra_rnn.flatten_parameters()
         intra_rnn, _ = self.intra_rnn(intra_rnn)
 
         # intra_rnn = nn.utils.rnn.pad_packed_sequence(
@@ -223,6 +255,7 @@ class Dual_RNN_Block(nn.Module):
 
         # inter_rnn= nn.utils.rnn.pack_padded_sequence(
         #     inter_rnn, input_lengths, batch_first=True, enforce_sorted=False)
+        self.inter_rnn.flatten_parameters()
         inter_rnn, _ = self.inter_rnn(inter_rnn)
 
         # inter_rnn = nn.utils.rnn.pad_packed_sequence(
@@ -264,8 +297,11 @@ class Dual_Path_RNN(nn.Module):
         self.K = K
         self.num_spks = num_spks
         self.num_layers = num_layers
-        self.norm = select_norm(norm, in_channels, 3)
-        self.conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
+        self.audio_norm = select_norm(norm, in_channels, 3)
+        self.audio_conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
+
+        self.video_norm = select_norm(norm, in_channels, 3)
+        self.video_conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
 
         self.dual_rnn = nn.ModuleList([])
         for i in range(num_layers):
@@ -286,15 +322,23 @@ class Dual_Path_RNN(nn.Module):
                                          nn.Sigmoid()
                                          )
 
-    def forward(self, x):#, input_lengths):
+    def forward(self, ae, ve):#, input_lengths):
         '''
            x: [B, N, L]
 
         '''
         # [B, N, L]
-        x = self.norm(x)
+        ae = self.audio_norm(ae)
         # [B, N, L]
-        x = self.conv1d(x)
+        ae = self.audio_conv1d(ae)
+
+
+        ve = self.video_norm(ve)
+        # [B, N, L]
+        ve = self.video_conv1d(ve)
+
+        x = ae + ve
+
         # [B, N, K, S]
         x, gap = self._Segmentation(x, self.K)
         # [B, N*spks, K, S]
@@ -387,7 +431,7 @@ class Dual_RNN_model(nn.Module):
             in_channels: The number of expected features in the input x
             out_channels: The number of features in the hidden state h
             hidden_channels: The hidden size of RNN
-            kernel_size: Encoder and Decoder Kernel size
+            kernel_size: AudioEncoder and Decoder Kernel size
             rnn_type: RNN, LSTM, GRU
             norm: gln = "Global Norm", cln = "Cumulative Norm", ln = "Layer Norm"
             dropout: If non-zero, introduces a Dropout layer on the outputs 
@@ -400,32 +444,44 @@ class Dual_RNN_model(nn.Module):
     '''
     def __init__(self, in_channels, out_channels, hidden_channels,
                  kernel_size=2, rnn_type='LSTM', norm='ln', dropout=0,
-                 bidirectional=False, num_layers=4, K=200, num_spks=2):
+                 bidirectional=False, num_layers=4, K=200, num_spks=2, video_kernel_size=8, upsample_size=15999):
         super(Dual_RNN_model,self).__init__()
-        self.encoder = Encoder(kernel_size=kernel_size,out_channels=in_channels)
+        self.audio_encoder = AudioEncoder(kernel_size=kernel_size, out_channels=in_channels)
+        self.video_encoder = VideoEncoder(kernel_size=video_kernel_size, out_channels=in_channels, upsample_size=upsample_size)
         self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
                  rnn_type=rnn_type, norm=norm, dropout=dropout,
                  bidirectional=bidirectional, num_layers=num_layers, K=K, num_spks=num_spks)
         self.decoder = Decoder(in_channels=in_channels, out_channels=1, kernel_size=kernel_size, stride=kernel_size//2, bias=False)
         self.num_spks = num_spks
     
-    def forward(self, x):#, input_lenghts):
+    def forward(self, input):#, input_lenghts):
         '''
            x: [B, L]
         '''
+        
         # [B, N, L]
-        e = self.encoder(x)
+        ae = self.audio_encoder(input["mix_audios"])
+
+        ve = self.video_encoder(torch.cat((input['first_videos_features'], input['second_videos_features']), dim=-1))
+
         # [spks, B, N, L]
-        s = self.separation(e)#, input_lenghts)
+        s = self.separation(ae, ve)#, input_lenghts)
         # [B, N, L] -> [B, L]
-        out = [s[i]*e for i in range(self.num_spks)]
+        out = [s[i]*ae for i in range(self.num_spks)]
         audio = [self.decoder(out[i]) for i in range(self.num_spks)]
         return audio
 
 if __name__ == "__main__":
     rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6)
-    #encoder = Encoder(16, 512)
-    x = torch.ones(1, 100)
+    from modelsummary import summary
+
+    #audio_encoder = AudioEncoder(16, 512)
+    x = {
+        "mix_audios":torch.ones(1, 16000),
+        'first_videos_features':torch.ones(1, 50, 512),
+        'second_videos_features':torch.ones(1, 50, 512)}
+    
+    summary(rnn, x, show_input=True)#
     out = rnn(x)
     print("{:.3f}".format(check_parameters(rnn)*1000000))
     print(rnn)

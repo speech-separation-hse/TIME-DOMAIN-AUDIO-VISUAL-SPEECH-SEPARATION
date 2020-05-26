@@ -67,7 +67,8 @@ class Trainer(object):
                 opt['resume']['path'], self.cur_epoch))
             self.dualrnn.load_state_dict(ckp['model_state_dict'])
         optimizer = make_optimizer(self.dualrnn.parameters(), opt)
-        optimizer.load_state_dict(ckp['optim_state_dict'])
+        if opt['resume']['state']:
+            optimizer.load_state_dict(ckp['optim_state_dict'])
 
         self.dualrnn, optimizer = amp.initialize(self.dualrnn, optimizer)
 
@@ -102,10 +103,11 @@ class Trainer(object):
         start_time = time.time()
         pbar = tqdm(self.train_dataloader, leave=False)
         for batch in pbar:
-            
-            mix = batch["mix_audios"].to(self.device)
+            batch["first_videos_features"] = batch["first_videos_features"][:, :50, :].detach()
+            batch["second_videos_features"] = batch["second_videos_features"][:, :50, :].detach()
+            batch = {k: v.to(self.device) for k, v in batch.items()}
             #mix = mix.to(self.device)
-            ref = [batch[f"{i}_audios"].to(self.device) for i in ["first", "second"]]
+            ref = [batch[f"{i}_audios"] for i in ["first", "second"]]
             #ref = [ref[i].to(self.device) for i in range(self.num_spks)]
             self.optimizer.zero_grad()
 
@@ -114,7 +116,7 @@ class Trainer(object):
             #     out = self.dualrnn(mix)
             # else:
             st_time = perf_counter()
-            out = self.dualrnn(mix)#, batch["audios_lens"])
+            out = self.dualrnn(batch)#, batch["audios_lens"])
             st_time = perf_counter()
             l = Loss(out, ref)#, batch["audios_lens"])
 
@@ -156,8 +158,11 @@ class Trainer(object):
             for batch in pbar:
                 # mix = mix.to(self.device)
                 # ref = [ref[i].to(self.device) for i in range(self.num_spks)]
-                mix = batch["mix_audios"].to(self.device)
-                ref = [batch[f"{i}_audios"].to(self.device) for i in ["first", "second"]]
+                batch["first_videos_features"] = batch["first_videos_features"][:, :50, :].detach()
+                batch["second_videos_features"] = batch["second_videos_features"][:, :50, :].detach()
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+
+                ref = [batch[f"{i}_audios"] for i in ["first", "second"]]
                 # self.optimizer.zero_grad()
 
                 # if self.gpuid:
@@ -165,7 +170,7 @@ class Trainer(object):
                 #     #out = model(mix)
                 #     out = torch.nn.parallel.data_parallel(self.dualrnn,mix,device_ids=self.gpuid)
                 # else:
-                out = self.dualrnn(mix)#, batch["audios_lens"])
+                out = self.dualrnn(batch)#, batch["audios_lens"])
                 
                 l = Loss(out, ref)#, batch["audios_lens"])
                 pbar.set_description(f"Loss: {round(l.item(), 4)}")
@@ -186,7 +191,7 @@ class Trainer(object):
         
         audio_idx = random.randrange(0, out[0].size(0))
 
-        audio_writer.write_audio((ref[0][audio_idx], ref[1][audio_idx]), (out[0][audio_idx], out[1][audio_idx]), mix[audio_idx], batch["audios_lens"][audio_idx], epoch)
+        audio_writer.write_audio((ref[0][audio_idx], ref[1][audio_idx]), (out[0][audio_idx], out[1][audio_idx]), batch['mix_audios'][audio_idx], batch["audios_lens"][audio_idx], epoch)
 
 
         return total_loss
@@ -204,8 +209,8 @@ class Trainer(object):
         no_improve = 0
         # starting training part
         while self.cur_epoch < self.total_epoch:
-            self.cur_epoch += 1
             t_loss = self.train(self.cur_epoch)
+            self.cur_epoch += 1
             v_loss = self.validation(self.cur_epoch)
 
             train_loss.append(t_loss)

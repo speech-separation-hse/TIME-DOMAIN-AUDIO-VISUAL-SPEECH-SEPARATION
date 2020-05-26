@@ -28,6 +28,8 @@ Dual_Path_RNN:
   out_channels: 64 
   hidden_channels: 128
   kernel_size: 2
+  video_kernel_size: 8
+  upsample_size: 15999
   rnn_type: LSTM
   norm: ln
   dropout: 0
@@ -60,7 +62,7 @@ scheduler:
 
 #### Resume training settings
 resume:
-  state: true
+  state: false
   path: checkpoints/best.pt
 
 
@@ -72,3 +74,4 @@ logger:
   tofile: true
   tensorboard: true
   print_freq: 10
+  
