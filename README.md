@@ -12,16 +12,22 @@ Pytorch implementation
 ***
 
 ### Audio-only model
-* #### Clean audio
+* #### Clean audio 
+[tensorboard log online](https://tensorboard.dev/experiment/PXy5m20DR0aAb5fvqEjofA/)
 ![audio_clean](src/log/audio_only_model/clean_loss.png)
+
 * #### Noised audio
-<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+<!-- [tensorboard log online](https://tensorboard.dev/experiment/
+![audio_clean](src/log/audio_only_model/loss.png) -->
 
 ***
 
 ### AudioVisual model
 * #### Clean audio
-<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+<!-- [tensorboard log online](https://tensorboard.dev/experiment/
+![audio_clean](src/log/audio_only_model/loss.png) -->
+
 * #### Noised audio
-<!-- ![audio_clean](src/log/audio_only_model/loss.png) -->
+<!-- [tensorboard log online](https://tensorboard.dev/experiment/
+![audio_clean](src/log/audio_only_model/loss.png) -->
 
