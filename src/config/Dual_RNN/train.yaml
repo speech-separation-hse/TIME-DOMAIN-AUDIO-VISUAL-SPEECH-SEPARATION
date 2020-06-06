@@ -5,22 +5,35 @@ num_spks: 2
 #### datasets
 datasets:
   train:
-    dataroot: 'Y:/CSC/dual-path-rnn/data'
-    dataroot_csv: 'Y:/CSC/dual-path-rnn/data/train.csv'
+    video_path: '../trainval'
+    n_samples: 100000
+    video_features_path: '../video_features'
+    noise_path: 'wham_noise/tr'
+    deterministic: true
+    cache_path: 'train_caches_noise'
+    batch_size: 30
+
 
   val:
-    dataroot: 'Y:/CSC/dual-path-rnn/data'
-    dataroot_csv: 'Y:/CSC/dual-path-rnn/data/test_full.csv'
+    video_path: '../test'
+    n_samples: 6000
+    video_features_path: '../video_features_test'
+    noise_path: 'wham_noise/cv'
+    deterministic: true
+    cache_path: 'test_caches_noise'
+    batch_size: 120
+  
   
   dataloader_setting:
     shuffle: true
-    num_workers: 1  # per GPU
-    batch_size: 1
   
   audio_setting:
     sample_rate: 8000
-    chunk_size: 3
-    
+  
+  video_setting:
+    fps: 25
+
+  duration: 2
 
 #### network structures
 Dual_Path_RNN:
@@ -29,7 +42,7 @@ Dual_Path_RNN:
   hidden_channels: 128
   kernel_size: 2
   video_kernel_size: 8
-  upsample_size: 15999
+  include_video_features: false
   rnn_type: LSTM
   norm: ln
   dropout: 0

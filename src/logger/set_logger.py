@@ -16,12 +16,13 @@ class TensorboardHandler(logging.StreamHandler):
         self.num_iter_val = num_iter_val
         self.sr = sr
 
-    def write_audio(self, audio_real, audio_predicted, audio_mix, audio_len, global_step):
+    def write_audio(self, audio_real, audio_predicted, audio_mix, audio_len, noise, global_step):
         self.summary_writer.add_audio(f"audio/real_1", audio_real[0][:audio_len].unsqueeze(0), global_step, sample_rate = self.sr)
         self.summary_writer.add_audio(f"audio/real_2", audio_real[1][:audio_len].unsqueeze(0), global_step, sample_rate = self.sr)
         self.summary_writer.add_audio(f"audio/pred_1", (audio_predicted[0][:audio_len] / audio_predicted[0].max()).unsqueeze(0), global_step, sample_rate = self.sr)
         self.summary_writer.add_audio(f"audio/pred_2", (audio_predicted[1][:audio_len] / audio_predicted[1].max()).unsqueeze(0), global_step, sample_rate = self.sr)
         self.summary_writer.add_audio(f"audio/mix", audio_mix[:audio_len].unsqueeze(0), global_step, sample_rate = self.sr)
+        self.summary_writer.add_audio(f"audio/noise", noise[:audio_len].unsqueeze(0), global_step, sample_rate = self.sr)
 
     def emit(self, record):
         try:

@@ -12,44 +12,47 @@ import argparse
 import torch
 from pathlib import Path
 from trainer import trainer_Dual_RNN
-from data_loader.dataset_mixer import DatasetMixer, AudioVideoCollate
+from data_loader.dataset_mixer import DatasetMixer, audio_video_collate_fn
 
 def make_dataloader(opt):
     # make train's dataloader
-    path_to_video = Path('../trainval')
-    path_to_features = Path('../video_features')
+   
+    train_dataset = DatasetMixer(
+        path_to_video=Path(opt['datasets']['train']['video_path']),
+        n_samples=opt['datasets']['train']['n_samples'],
+        duration=opt['datasets']['duration'],
+        fps=opt['datasets']['video_setting']['fps'],
+        path_to_features=Path(opt['datasets']['train']['video_features_path']),
+        path_to_noise=Path(opt['datasets']['train']['noise_path']),
+        deterministic=opt['datasets']['train']['deterministic'],
+        cache_directory=Path(opt['datasets']['train']['cache_path'])
+    )
 
-    train_dataset = DatasetMixer(path_to_video=path_to_video, n_samples=100000, path_to_features=path_to_features, cache_directory=Path('train_caches'))
-    train_dataloader = DataLoader(train_dataset, batch_size=36, collate_fn=AudioVideoCollate, shuffle=True)
+    train_dataloader = DataLoader(
+        dataset=train_dataset,
+        batch_size=opt['datasets']['train']['batch_size'],
+        collate_fn=audio_video_collate_fn,
+        shuffle=opt['datasets']['dataloader_setting']['shuffle']
+    )
 
 
-    # train_dataset = Datasets(
-    #     Path(opt['datasets']['train']['dataroot']),
-    #     opt['datasets']['train']['dataroot_csv'],
-    #     **opt['datasets']['audio_setting'])
-    # train_dataloader = Loader(train_dataset,
-    #                           batch_size=opt['datasets']['dataloader_setting']['batch_size'],
-    #                           num_workers=opt['datasets']['dataloader_setting']['num_workers'],
-    #                           shuffle=opt['datasets']['dataloader_setting']['shuffle'])
+    val_dataset = DatasetMixer(
+        path_to_video=Path(opt['datasets']['val']['video_path']),
+        n_samples=opt['datasets']['val']['n_samples'],
+        duration=opt['datasets']['duration'],
+        fps=opt['datasets']['video_setting']['fps'],
+        path_to_features=Path(opt['datasets']['val']['video_features_path']),
+        path_to_noise=Path(opt['datasets']['val']['noise_path']),
+        deterministic=opt['datasets']['val']['deterministic'],
+        cache_directory=Path(opt['datasets']['val']['cache_path'])
+    )
 
-    
-    # make validation dataloader
-
-
-    path_to_val_video = Path('../test')
-    path_to_val_features = Path('../video_features_test')
-
-    val_dataset = DatasetMixer(path_to_video=path_to_val_video, n_samples=6000, path_to_features=path_to_val_features, cache_directory=Path('test_caches'))
-    val_dataloader = DataLoader(val_dataset, batch_size=120, collate_fn=AudioVideoCollate, shuffle=True)
-    
-    # val_dataset = Datasets(
-    #     Path(opt['datasets']['val']['dataroot']),
-    #     opt['datasets']['val']['dataroot_csv'],
-    #     **opt['datasets']['audio_setting'])
-    # val_dataloader = Loader(val_dataset,
-    #                         batch_size=opt['datasets']['dataloader_setting']['batch_size'] * 8,
-    #                         num_workers=opt['datasets']['dataloader_setting']['num_workers'],
-    #                         shuffle=False)
+    val_dataloader = DataLoader(
+        dataset=val_dataset,
+        batch_size=opt['datasets']['val']['batch_size'],
+        collate_fn=audio_video_collate_fn,
+        shuffle=opt['datasets']['dataloader_setting']['shuffle']
+    )
     
     return train_dataloader, val_dataloader
 

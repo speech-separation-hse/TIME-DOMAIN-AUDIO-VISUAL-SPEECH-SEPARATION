@@ -106,10 +106,13 @@ class AudioEncoder(nn.Module):
        out_channels: the number of filters
     '''
 
-    def __init__(self, kernel_size=2, out_channels=64):
+    def __init__(self, kernel_size=2, interm_out_channels=64, out_channels=256, norm='ln'):
         super(AudioEncoder, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
+        self.conv1d = nn.Conv1d(in_channels=1, out_channels=interm_out_channels,
                                 kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
+        
+        self.audio_norm = select_norm(norm, interm_out_channels, 3)
+        self.sep_audio_conv1d = nn.Conv1d(interm_out_channels, out_channels, 1, bias=False)
 
     def forward(self, x):
         """
@@ -123,8 +126,13 @@ class AudioEncoder(nn.Module):
         x = torch.unsqueeze(x, dim=1)
         # B x 1 x T -> B x C x T_out
         x = self.conv1d(x)
-        x = F.relu(x)
-        return x
+        ae = F.relu(x)
+
+        # [B, N, L]
+        x = self.audio_norm(ae)
+        # [B, N, L]
+        x = self.sep_audio_conv1d(x)
+        return ae, x
 
 
 class VideoEncoder(nn.Module):
@@ -134,14 +142,16 @@ class VideoEncoder(nn.Module):
        out_channels: the number of filters
     '''
 
-    def __init__(self, kernel_size=2, out_channels=256, upsample_size=16000):
+    def __init__(self, kernel_size=2, interm_out_channels=64, out_channels=256, norm='ln'):
         super(VideoEncoder, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=1, out_channels=out_channels,
+        self.conv1d = nn.Conv1d(in_channels=1, out_channels=interm_out_channels,
                                 kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
-        self.upsample = nn.Upsample(size=upsample_size)
+        
         self.prelu = nn.PReLU()
-
-    def forward(self, x):
+        self.video_norm = select_norm(norm, interm_out_channels, 3)
+        self.sep_video_conv1d = nn.Conv1d(interm_out_channels, out_channels, 1, bias=False)
+    
+    def forward(self, x, upsample_size=15999):
         """
           Input:
               x: [B, T], B is batch size, T is times
@@ -155,7 +165,11 @@ class VideoEncoder(nn.Module):
         x = self.conv1d(x)
         x = self.prelu(x)
         # B x C x T_out -> B x C x upsample_size
-        x = self.upsample(x)
+        x = F.interpolate(x, upsample_size, mode='linear', align_corners=False)
+
+        x = self.video_norm(x)
+        # [B, N, L]
+        x = self.sep_video_conv1d(x)
         return x
 
 
@@ -297,12 +311,6 @@ class Dual_Path_RNN(nn.Module):
         self.K = K
         self.num_spks = num_spks
         self.num_layers = num_layers
-        self.audio_norm = select_norm(norm, in_channels, 3)
-        self.audio_conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
-
-        self.video_norm = select_norm(norm, in_channels, 3)
-        self.video_conv1d = nn.Conv1d(in_channels, out_channels, 1, bias=False)
-
         self.dual_rnn = nn.ModuleList([])
         for i in range(num_layers):
             self.dual_rnn.append(Dual_RNN_Block(out_channels, hidden_channels,
@@ -322,23 +330,11 @@ class Dual_Path_RNN(nn.Module):
                                          nn.Sigmoid()
                                          )
 
-    def forward(self, ae, ve):#, input_lengths):
+    def forward(self, x):#, input_lengths):
         '''
            x: [B, N, L]
 
         '''
-        # [B, N, L]
-        ae = self.audio_norm(ae)
-        # [B, N, L]
-        ae = self.audio_conv1d(ae)
-
-
-        ve = self.video_norm(ve)
-        # [B, N, L]
-        ve = self.video_conv1d(ve)
-
-        x = ae + ve
-
         # [B, N, K, S]
         x, gap = self._Segmentation(x, self.K)
         # [B, N*spks, K, S]
@@ -444,10 +440,14 @@ class Dual_RNN_model(nn.Module):
     '''
     def __init__(self, in_channels, out_channels, hidden_channels,
                  kernel_size=2, rnn_type='LSTM', norm='ln', dropout=0,
-                 bidirectional=False, num_layers=4, K=200, num_spks=2, video_kernel_size=8, upsample_size=15999):
+                 bidirectional=False, num_layers=4, K=200, num_spks=2, video_kernel_size=8, include_video_features=False):
         super(Dual_RNN_model,self).__init__()
-        self.audio_encoder = AudioEncoder(kernel_size=kernel_size, out_channels=in_channels)
-        self.video_encoder = VideoEncoder(kernel_size=video_kernel_size, out_channels=in_channels, upsample_size=upsample_size)
+        self.include_video_features = include_video_features
+        self.audio_encoder = AudioEncoder(kernel_size=kernel_size, interm_out_channels=in_channels, out_channels=out_channels, norm=norm)
+        if self.include_video_features:
+            self.video_encoder = VideoEncoder(kernel_size=video_kernel_size, interm_out_channels=in_channels, out_channels=out_channels, norm=norm)
+            self.audio_video_projection = nn.Linear(in_features=2, out_features=1)
+        
         self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
                  rnn_type=rnn_type, norm=norm, dropout=dropout,
                  bidirectional=bidirectional, num_layers=num_layers, K=K, num_spks=num_spks)
@@ -460,28 +460,27 @@ class Dual_RNN_model(nn.Module):
         '''
         
         # [B, N, L]
-        ae = self.audio_encoder(input["mix_audios"])
+        ae, x = self.audio_encoder(input["mix_noised_audios"])
+        if self.include_video_features:
+            ve = self.video_encoder(torch.cat((input['first_videos_features'], input['second_videos_features']), dim=-1), ae.size(-1))
 
-        ve = self.video_encoder(torch.cat((input['first_videos_features'], input['second_videos_features']), dim=-1))
-
+        x = self.audio_video_projection(torch.stack((x, ve), dim=-1)).squeeze(-1) if self.include_video_features else x
         # [spks, B, N, L]
-        s = self.separation(ae, ve)#, input_lenghts)
+        s = self.separation(x)#, input_lenghts)
         # [B, N, L] -> [B, L]
         out = [s[i]*ae for i in range(self.num_spks)]
         audio = [self.decoder(out[i]) for i in range(self.num_spks)]
         return audio
 
 if __name__ == "__main__":
-    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6)
-    from modelsummary import summary
+    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6, include_video_features=False)
 
     #audio_encoder = AudioEncoder(16, 512)
     x = {
-        "mix_audios":torch.ones(1, 16000),
+        "mix_noised_audios":torch.ones(1, 16000),
         'first_videos_features':torch.ones(1, 50, 512),
         'second_videos_features':torch.ones(1, 50, 512)}
     
-    summary(rnn, x, show_input=True)#
     out = rnn(x)
     print("{:.3f}".format(check_parameters(rnn)*1000000))
     print(rnn)
