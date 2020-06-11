@@ -142,13 +142,14 @@ class VideoEncoder(nn.Module):
        out_channels: the number of filters
     '''
 
-    def __init__(self, kernel_size=2, interm_out_channels=64, out_channels=256, norm='ln'):
+    def __init__(self, kernel_size=2, interm_out_channels=64, out_channels=256, norm='ln', lip_embedding_dim=512, num_spks=2):
         super(VideoEncoder, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=1, out_channels=interm_out_channels,
-                                kernel_size=kernel_size, stride=kernel_size//2, groups=1, bias=False)
-        
-        self.prelu = nn.PReLU()
+        self.conv = nn.Conv1d(in_channels=lip_embedding_dim * num_spks, out_channels=interm_out_channels, kernel_size=3)
+        self.upconv = nn.ConvTranspose1d(in_channels=interm_out_channels, out_channels=interm_out_channels, kernel_size=1024, stride=328)
         self.video_norm = select_norm(norm, interm_out_channels, 3)
+
+        self.prelu = nn.PReLU()
+        
         self.sep_video_conv1d = nn.Conv1d(interm_out_channels, out_channels, 1, bias=False)
     
     def forward(self, x, upsample_size=15999):
@@ -159,13 +160,12 @@ class VideoEncoder(nn.Module):
               x: [B, C, T_out]
               T_out is the number of time steps
         """
-        # B x FPS x VideoFeatures -> B x 1 x FPS * VideoFeatures
-        x = x.flatten(start_dim=1).unsqueeze(1)
-        # B x 1 x FPS * VideoFeatures -> B x C x T_out
-        x = self.conv1d(x)
+        # B x FPS * seconds x VideoFeatures_dim * 2 -> B x VideoFeatures_dim * 2 x FPS * seconds
+        x = x.transpose(1, 2)
+
+        x = self.conv(x)
         x = self.prelu(x)
-        # B x C x T_out -> B x C x upsample_size
-        x = F.interpolate(x, upsample_size, mode='linear', align_corners=False)
+        x = self.upconv(x)[:, :, :upsample_size]
 
         x = self.video_norm(x)
         # [B, N, L]
@@ -440,12 +440,12 @@ class Dual_RNN_model(nn.Module):
     '''
     def __init__(self, in_channels, out_channels, hidden_channels,
                  kernel_size=2, rnn_type='LSTM', norm='ln', dropout=0,
-                 bidirectional=False, num_layers=4, K=200, num_spks=2, video_kernel_size=8, include_video_features=False):
+                 bidirectional=False, num_layers=4, K=200, num_spks=2, lip_embedding_dim=512, video_kernel_size=8, include_video_features=False):
         super(Dual_RNN_model,self).__init__()
         self.include_video_features = include_video_features
         self.audio_encoder = AudioEncoder(kernel_size=kernel_size, interm_out_channels=in_channels, out_channels=out_channels, norm=norm)
         if self.include_video_features:
-            self.video_encoder = VideoEncoder(kernel_size=video_kernel_size, interm_out_channels=in_channels, out_channels=out_channels, norm=norm)
+            self.video_encoder = VideoEncoder(kernel_size=video_kernel_size, interm_out_channels=in_channels, out_channels=out_channels, norm=norm, num_spks=num_spks, lip_embedding_dim=lip_embedding_dim)
             self.audio_video_projection = nn.Linear(in_features=2, out_features=1)
         
         self.separation = Dual_Path_RNN(in_channels, out_channels, hidden_channels,
@@ -473,14 +473,18 @@ class Dual_RNN_model(nn.Module):
         return audio
 
 if __name__ == "__main__":
-    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6, include_video_features=False)
+    from modelsummary import summary
+    rnn = Dual_RNN_model(256, 64, 128,bidirectional=True, norm='ln', num_layers=6, include_video_features=True)
 
     #audio_encoder = AudioEncoder(16, 512)
+    seconds = 2
+    sample_rate = 8000
+    fps = 25
+
     x = {
-        "mix_noised_audios":torch.ones(1, 16000),
-        'first_videos_features':torch.ones(1, 50, 512),
-        'second_videos_features':torch.ones(1, 50, 512)}
+        "mix_noised_audios":torch.ones(1, seconds * sample_rate),
+        'first_videos_features':torch.ones(1, seconds * fps, 512),
+        'second_videos_features':torch.ones(1, seconds * fps, 512)}
     
     out = rnn(x)
-    print("{:.3f}".format(check_parameters(rnn)*1000000))
-    print(rnn)
+    print(summary(rnn, x))

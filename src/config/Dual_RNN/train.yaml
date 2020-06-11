@@ -42,7 +42,8 @@ Dual_Path_RNN:
   hidden_channels: 128
   kernel_size: 2
   video_kernel_size: 8
-  include_video_features: false
+  lip_embedding_dim: 512
+  include_video_features: true
   rnn_type: LSTM
   norm: ln
   dropout: 0
