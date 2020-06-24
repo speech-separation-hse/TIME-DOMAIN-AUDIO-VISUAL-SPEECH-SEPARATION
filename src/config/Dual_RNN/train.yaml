@@ -11,7 +11,7 @@ datasets:
     noise_path: 'wham_noise/tr'
     deterministic: true
     cache_path: 'train_caches_noise'
-    batch_size: 30
+    batch_size: 36
 
 
   val:
@@ -42,7 +42,7 @@ Dual_Path_RNN:
   hidden_channels: 128
   kernel_size: 2
   video_kernel_size: 8
-  include_video_features: false
+  upsample_size: 15999
   rnn_type: LSTM
   norm: ln
   dropout: 0
@@ -53,7 +53,7 @@ Dual_Path_RNN:
 
 #### training settings: learning rate scheme, loss
 train:
-  epoch: 100
+  epoch: 200
   early_stop: 10
   path: checkpoints
   gpuid: [0]
@@ -75,7 +75,7 @@ scheduler:
 
 #### Resume training settings
 resume:
-  state: false
+  state: true
   path: checkpoints/best.pt
 
 

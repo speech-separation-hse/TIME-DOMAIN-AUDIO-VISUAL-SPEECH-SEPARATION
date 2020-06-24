@@ -41,14 +41,15 @@ class Trainer(object):
         self.early_stop = opt['train']['early_stop']
 
         self.print_freq = opt['logger']['print_freq']
-
+        # setup_logger(opt['logger']['name'], opt['logger']['path'],
+        #             screen=opt['logger']['screen'], tofile=opt['logger']['tofile'])
         self.logger = logging.getLogger(opt['logger']['name'])
         self.checkpoint = opt['train']['path']
         self.name = opt['name']
 
         if opt['train']['gpuid']:
             self.logger.info('Load Nvida GPU .....')
-            self.device = torch.device('cuda')
+            self.device = torch.device('cuda')#:{}'.format(opt['train']['gpuid'][0]))
             self.gpuid = opt['train']['gpuid']
         else:
             self.logger.info('Load CPU ...........')
@@ -70,8 +71,7 @@ class Trainer(object):
             optimizer.load_state_dict(ckp['optim_state_dict'])
 
         self.dualrnn, optimizer = amp.initialize(self.dualrnn, optimizer)
-        if opt['resume']['state'] and 'amp_state_dict' in ckp:
-            amp.load_state_dict(ckp['amp_state_dict'])
+
 
         if opt['train']['distributed']:
             self.dualrnn = torch.nn.DataParallel(self.dualrnn)
