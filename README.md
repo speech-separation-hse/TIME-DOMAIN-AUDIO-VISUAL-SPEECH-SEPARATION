@@ -1,6 +1,13 @@
 # TIME-DOMAIN-AUDIO-VISUAL-SPEECH-SEPARATION
 Pytorch implementation
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/speech-separation-hse/TIME-DOMAIN-AUDIO-VISUAL-SPEECH-SEPARATION/blob/master/Inference.ipynb)
+
+***
+**View results:**
+
+[![Watch the video](https://i.imgur.com/bWtMVE3.png)](https://youtu.be/3ntlREumA_Q)
+
 ***
 
 | Model type  | Clean audio val loss | 
